@@ -18,57 +18,12 @@ A Model Context Protocol (MCP) server that provides web search capabilities thro
 
 ## Installation
 
-### Installing via Smithery
-
-To install DuckDuckGo Search Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@nickclyde/duckduckgo-mcp-server):
-
-```bash
-npx -y @smithery/cli install @nickclyde/duckduckgo-mcp-server --client claude
-```
-
-### Installing via `uv`
-
-Install directly from PyPI using `uv`:
-
-```bash
-uv pip install duckduckgo-mcp-server
-```
+Clone the repo.
 
 ## Usage
 
-### Running with Claude Desktop
+```fastmcp run server.py:mcp --transport http --port 3000 --host 192.168.xxx.yyy```
 
-1. Download [Claude Desktop](https://claude.ai/download)
-2. Create or edit your Claude Desktop configuration:
-   - On macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add the following configuration:
-
-```json
-{
-    "mcpServers": {
-        "ddg-search": {
-            "command": "uvx",
-            "args": ["duckduckgo-mcp-server"]
-        }
-    }
-}
-```
-
-3. Restart Claude Desktop
-
-### Development
-
-For local development, you can use the MCP CLI:
-
-```bash
-# Run with the MCP Inspector
-mcp dev server.py
-
-# Install locally for testing with Claude Desktop
-mcp install server.py
-```
 ## Available Tools
 
 ### 1. Search Tool
