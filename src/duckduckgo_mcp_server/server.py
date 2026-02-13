@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 import time
 import re
+from mcp.server.transport_security import TransportSecuritySettings
 
 
 @dataclass
@@ -206,7 +207,9 @@ class WebContentFetcher:
 
 
 # Initialize FastMCP server
-mcp = FastMCP("ddg-search")
+mcp = FastMCP("ddg-search", transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ))
 searcher = DuckDuckGoSearcher()
 fetcher = WebContentFetcher()
 
