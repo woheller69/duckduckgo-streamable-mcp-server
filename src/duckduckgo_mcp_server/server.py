@@ -11,7 +11,17 @@ from datetime import datetime, timedelta
 import time
 import re
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.middleware.cors import CORSMiddleware
+import uvicorn
+from fastmcp import FastMCP
+import logging
 
+# Configure logging once at module level
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("duckduckgo_mcp")
 
 @dataclass
 class SearchResult:
@@ -45,43 +55,33 @@ class RateLimiter:
 class DuckDuckGoSearcher:
     BASE_URL = "https://html.duckduckgo.com/html"
     HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
 
     def __init__(self):
         self.rate_limiter = RateLimiter()
+        self.logger = logging.getLogger("duckduckgo_mcp.searcher")
 
     def format_results_for_llm(self, results: List[SearchResult]) -> str:
-        """Format results in a natural language style that's easier for LLMs to process"""
+        """Format results in a natural language style"""
         if not results:
-            return "No results were found for your search query. This could be due to DuckDuckGo's bot detection or the query returned no matches. Please try rephrasing your search or try again in a few minutes."
-
+            return "No results were found for your search query..."
         output = []
         output.append(f"Found {len(results)} search results:\n")
-
         for result in results:
             output.append(f"{result.position}. {result.title}")
             output.append(f"   URL: {result.link}")
             output.append(f"   Summary: {result.snippet}")
-            output.append("")  # Empty line between results
-
+            output.append("")
         return "\n".join(output)
 
     async def search(
         self, query: str, ctx: Context, max_results: int = 10
     ) -> List[SearchResult]:
         try:
-            # Apply rate limiting
             await self.rate_limiter.acquire()
-
-            # Create form data for POST request
-            data = {
-                "q": query,
-                "b": "",
-                "kl": "",
-            }
-
-            await ctx.info(f"Searching DuckDuckGo for: {query}")
+            data = {"q": query, "b": "", "kl": ""}
+            self.logger.info(f"Searching DuckDuckGo for: {query}")
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -89,10 +89,9 @@ class DuckDuckGoSearcher:
                 )
                 response.raise_for_status()
 
-            # Parse HTML response
             soup = BeautifulSoup(response.text, "html.parser")
             if not soup:
-                await ctx.error("Failed to parse HTML response")
+                self.logger.error("Failed to parse HTML response")
                 return []
 
             results = []
@@ -108,11 +107,9 @@ class DuckDuckGoSearcher:
                 title = link_elem.get_text(strip=True)
                 link = link_elem.get("href", "")
 
-                # Skip ad results
                 if "y.js" in link:
                     continue
 
-                # Clean up DuckDuckGo redirect URLs
                 if link.startswith("//duckduckgo.com/l/?uddg="):
                     link = urllib.parse.unquote(link.split("uddg=")[1].split("&")[0])
 
@@ -131,85 +128,69 @@ class DuckDuckGoSearcher:
                 if len(results) >= max_results:
                     break
 
-            await ctx.info(f"Successfully found {len(results)} results")
+            self.logger.info(f"Successfully found {len(results)} results")
             return results
 
         except httpx.TimeoutException:
-            await ctx.error("Search request timed out")
+            self.logger.error("Search request timed out")
             return []
         except httpx.HTTPError as e:
-            await ctx.error(f"HTTP error occurred: {str(e)}")
+            self.logger.error(f"HTTP error occurred: {str(e)}")
             return []
         except Exception as e:
-            await ctx.error(f"Unexpected error during search: {str(e)}")
-            traceback.print_exc(file=sys.stderr)
+            self.logger.error(f"Unexpected error during search: {str(e)}", exc_info=True)
             return []
 
 
 class WebContentFetcher:
     def __init__(self):
         self.rate_limiter = RateLimiter(requests_per_minute=20)
+        self.logger = logging.getLogger("duckduckgo_mcp.fetcher")
 
     async def fetch_and_parse(self, url: str, ctx: Context) -> str:
-        """Fetch and parse content from a webpage"""
         try:
             await self.rate_limiter.acquire()
-
-            await ctx.info(f"Fetching content from: {url}")
+            self.logger.info(f"Fetching content from: {url}")
 
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    },
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
                     follow_redirects=True,
                     timeout=30.0,
                 )
                 response.raise_for_status()
 
-            # Parse the HTML
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # Remove script and style elements
             for element in soup(["script", "style", "nav", "header", "footer"]):
                 element.decompose()
 
-            # Get the text content
             text = soup.get_text()
-
-            # Clean up the text
             lines = (line.strip() for line in text.splitlines())
             chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
             text = " ".join(chunk for chunk in chunks if chunk)
-
-            # Remove extra whitespace
             text = re.sub(r"\s+", " ", text).strip()
 
-            # Truncate if too long
             if len(text) > 8000:
                 text = text[:8000] + "... [content truncated]"
 
-            await ctx.info(
-                f"Successfully fetched and parsed content ({len(text)} characters)"
-            )
+            self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
             return text
 
         except httpx.TimeoutException:
-            await ctx.error(f"Request timed out for URL: {url}")
+            self.logger.error(f"Request timed out for URL: {url}")
             return "Error: The request timed out while trying to fetch the webpage."
         except httpx.HTTPError as e:
-            await ctx.error(f"HTTP error occurred while fetching {url}: {str(e)}")
+            self.logger.error(f"HTTP error occurred while fetching {url}: {str(e)}")
             return f"Error: Could not access the webpage ({str(e)})"
         except Exception as e:
-            await ctx.error(f"Error fetching content from {url}: {str(e)}")
+            self.logger.error(f"Error fetching content from {url}: {str(e)}", exc_info=True)
             return f"Error: An unexpected error occurred while fetching the webpage ({str(e)})"
 
 
 # Initialize FastMCP server
-mcp = FastMCP("ddg-search", transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False,
-    ))
+mcp = FastMCP("ddg-search")
 searcher = DuckDuckGoSearcher()
 fetcher = WebContentFetcher()
 
@@ -243,10 +224,26 @@ async def fetch_content(url: str, ctx: Context) -> str:
     """
     return await fetcher.fetch_and_parse(url, ctx)
 
+# Create ASGI app (NOT using mcp.run())
+app = mcp.http_app(path="/mcp")
+print(f"✓ Created ASGI app: {type(app)}")  # Should show <class 'starlette.applications.Starlette'>
 
-def main():
-    mcp.run()
 
+# Add CORS middleware - critical for browser clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Specify exact origins in production!
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS", "DELETE"],  # Must include OPTIONS for preflight
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "mcp-protocol-version",
+        "mcp-session-id",
+    ],
+    expose_headers=["mcp-session-id"],  # Required for session management in browsers
+)
+print("✓ CORS middleware added")
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="192.168.2.215", port=3000)
