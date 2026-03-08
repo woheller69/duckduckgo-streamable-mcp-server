@@ -22,7 +22,7 @@ Clone the repo.
 
 ## Usage
 
-```fastmcp run server.py:mcp --transport http --port 3000 --host 192.168.xxx.yyy```
+```python3 server.py```
 
 ## Available Tools
 
