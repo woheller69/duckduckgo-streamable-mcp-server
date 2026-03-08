@@ -21,7 +21,7 @@ A Model Context Protocol (MCP) server that provides web search capabilities thro
 Clone the repo.
 
 ## Usage
-
+Edit your ip address in the last line of server.py and start with 
 ```python3 server.py```
 
 ## Available Tools
