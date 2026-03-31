@@ -15,6 +15,8 @@ from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 from fastmcp import FastMCP
 import logging
+from markdownify import markdownify as md
+from curl_cffi import requests as curl_requests
 
 # Configure logging once at module level
 logging.basicConfig(
@@ -147,36 +149,50 @@ class WebContentFetcher:
         self.rate_limiter = RateLimiter(requests_per_minute=20)
         self.logger = logging.getLogger("duckduckgo_mcp.fetcher")
 
+    def find_content(self, soup):
+        # Try different heuristics to find content
+        content_selectors = [
+            {'tag': 'div', 'attr': {'class': 'main-content'}},
+            {'tag': 'main', 'attr': {}},
+            {'tag': 'article', 'attr': {}}
+        ]
+
+        for selector in content_selectors:
+            content = soup.find(selector['tag'], attrs=selector['attr'])
+            if content:
+                return content
+
+        # As a fallback, return the body or None
+        return soup.find('body') or None
+            
     async def fetch_and_parse(self, url: str, ctx: Context) -> str:
         try:
             await self.rate_limiter.acquire()
             self.logger.info(f"Fetching content from: {url}")
-
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                    follow_redirects=True,
-                    timeout=30.0,
-                )
-                response.raise_for_status()
+                
+            response = curl_requests.get(
+                url,
+                impersonate="chrome120",  # or "firefox110", "safari15_3", etc.
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=30
+            )
 
             soup = BeautifulSoup(response.text, "html.parser")
 
-            for element in soup(["script", "style", "nav", "header", "footer"]):
-                element.decompose()
+            # Find content using heuristics
+            content_div = self.find_content(soup)
+        
+            if content_div:
+                # Converting to Markdown
+                text = md(str(content_div), heading_style="ATX")
+                if len(text) > 20000:
+                    text = text[:20000] + "... [content truncated]"
 
-            text = soup.get_text()
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = " ".join(chunk for chunk in chunks if chunk)
-            text = re.sub(r"\s+", " ", text).strip()
+                self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
+                return text
+            else:
+                return "Content not found."
 
-            if len(text) > 8000:
-                text = text[:8000] + "... [content truncated]"
-
-            self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
-            return text
 
         except httpx.TimeoutException:
             self.logger.error(f"Request timed out for URL: {url}")
