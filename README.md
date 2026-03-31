@@ -11,7 +11,7 @@ A Model Context Protocol (MCP) server that provides web search capabilities thro
 ## Features
 
 - **Web Search**: Search DuckDuckGo with advanced rate limiting and result formatting
-- **Content Fetching**: Retrieve and parse webpage content with intelligent text extraction
+- **Content Fetching**: Retrieve and parse webpage content with intelligent text extraction and format as markdown
 - **Rate Limiting**: Built-in protection against rate limits for both search and content fetching
 - **Error Handling**: Comprehensive error handling and logging
 - **LLM-Friendly Output**: Results formatted specifically for large language model consumption
@@ -49,13 +49,13 @@ Formatted string containing search results with titles, URLs, and snippets.
 async def fetch_content(url: str) -> str
 ```
 
-Fetches and parses content from a webpage.
+Fetches and parses content from a webpage and formats it as markdown.
 
 **Parameters:**
 - `url`: The webpage URL to fetch content from
 
 **Returns:**
-Cleaned and formatted text content from the webpage.
+Cleaned and formatted text content from the webpage formatted as markdown.
 
 ## Features in Detail
 
