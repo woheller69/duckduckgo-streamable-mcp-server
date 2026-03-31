@@ -19,6 +19,8 @@ A Model Context Protocol (MCP) server that provides web search capabilities thro
 ## Installation
 
 Clone the repo.
+pip install markdownify
+pip install curl_cffi
 
 ## Usage
 Edit your ip address in the last line of server.py and start with 
