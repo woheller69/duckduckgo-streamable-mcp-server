@@ -149,8 +149,21 @@ class WebContentFetcher:
         self.rate_limiter = RateLimiter(requests_per_minute=20)
         self.logger = logging.getLogger("duckduckgo_mcp.fetcher")
 
-    def find_content(self, soup):
-        # Try different heuristics to find content
+    def find_content(self, soup, url=None):
+        # Special case for Android Developer reference pages
+        if url and url.startswith("https://developer.android.com/reference/"):
+            # Prioritize finding the article with class containing 'devsite-article'
+            article = soup.find('article', class_='devsite-article')
+            if article:
+                return article
+            # Fallback: just 'article' if 'devsite-article' not found (unlikely, but safe)
+            article = soup.find('article')
+            if article:
+                return article
+            # Last resort: body
+            return soup.find('body') or None
+
+        # For other URLs, use your existing heuristics
         content_selectors = [
             {'tag': 'div', 'attr': {'class': 'main-content'}},
             {'tag': 'main', 'attr': {}},
@@ -180,7 +193,7 @@ class WebContentFetcher:
             soup = BeautifulSoup(response.text, "html.parser")
 
             # Find content using heuristics
-            content_div = self.find_content(soup)
+            content_div = self.find_content(soup, url)
         
             if content_div:
                 # Converting to Markdown
@@ -203,6 +216,7 @@ class WebContentFetcher:
         except Exception as e:
             self.logger.error(f"Error fetching content from {url}: {str(e)}", exc_info=True)
             return f"Error: An unexpected error occurred while fetching the webpage ({str(e)})"
+                
 
 
 # Initialize FastMCP server
@@ -262,4 +276,4 @@ app.add_middleware(
 print("✓ CORS middleware added")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="192.168.2.215", port=3000)
+    uvicorn.run(app, host="192.168.2.218", port=3000)
