@@ -1,23 +1,20 @@
-from mcp.server.fastmcp import FastMCP, Context
-import httpx
-from bs4 import BeautifulSoup
-from typing import List, Dict, Optional, Any
-from dataclasses import dataclass
-import urllib.parse
+import argparse
+import asyncio
+import logging
 import sys
 import traceback
-import asyncio
+import urllib.parse
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-import time
-import re
-from mcp.server.transport_security import TransportSecuritySettings
-from starlette.middleware.cors import CORSMiddleware
+from typing import List
+import httpx
 import uvicorn
-from fastmcp import FastMCP
-import logging
-from markdownify import markdownify as md
+from bs4 import BeautifulSoup
 from curl_cffi import requests as curl_requests
-import argparse
+from fastmcp import FastMCP
+from markdownify import markdownify as md
+from mcp.server.fastmcp import Context
+from starlette.middleware.cors import CORSMiddleware
 
 # Configure logging once at module level
 logging.basicConfig(
