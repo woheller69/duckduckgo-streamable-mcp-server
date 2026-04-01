@@ -151,18 +151,26 @@ class WebContentFetcher:
         self.logger = logging.getLogger("duckduckgo_mcp.fetcher")
 
     def find_content(self, soup, url=None):
+        # Parse URL parts for domain/path-based logic
+        domain = ""
+        path = ""
+        if url:
+            try:
+                parsed = urllib.parse.urlparse(url)
+                domain = parsed.netloc.lower()
+                path = parsed.path.lower()
+            except Exception:
+                pass
         # Special case for Android Developer reference pages
-        if url and url.startswith("https://developer.android.com/reference/"):
-            # Prioritize finding the article with class containing 'devsite-article'
+        if url and "developer.android.com" in domain and path.startswith("/reference"):
             article = soup.find('article', class_='devsite-article')
             if article:
                 return article
-            # Fallback: just 'article' if 'devsite-article' not found (unlikely, but safe)
-            article = soup.find('article')
+
+        if url and "wikipedia.org" in domain and path.startswith("/wiki"):
+            article = soup.find(class_="mw-body-content")
             if article:
                 return article
-            # Last resort: body
-            return soup.find('body') or None
 
         # For other URLs, use your existing heuristics
         content_selectors = [
@@ -310,3 +318,4 @@ if __name__ == "__main__":
     args = parse_args()
     print(f"🚀 Starting MCP server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
+
