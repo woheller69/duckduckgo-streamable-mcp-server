@@ -199,6 +199,7 @@ class WebContentFetcher:
                 # Converting to Markdown
                 text = md(str(content_div), heading_style="ATX")
                 if len(text) > 20000:
+                    self.logger.info(f"Truncating content, original length: ({len(text)} characters)")
                     text = text[:20000] + "... [content truncated]"
 
                 self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
