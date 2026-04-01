@@ -17,6 +17,7 @@ from fastmcp import FastMCP
 import logging
 from markdownify import markdownify as md
 from curl_cffi import requests as curl_requests
+import argparse
 
 # Configure logging once at module level
 logging.basicConfig(
@@ -276,5 +277,27 @@ app.add_middleware(
 )
 print("✓ CORS middleware added")
 
+# Add argument parsing
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="DuckDuckGo MCP Server - Search & Fetch Tools"
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Server host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=3000,
+        help="Server port (default: 3000)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="192.168.2.218", port=3000)
+    args = parse_args()
+    print(f"🚀 Starting MCP server on {args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port)
