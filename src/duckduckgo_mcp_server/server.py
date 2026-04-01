@@ -199,9 +199,18 @@ class WebContentFetcher:
             if content_div:
                 # Converting to Markdown
                 text = md(str(content_div), heading_style="ATX")
+
                 if len(text) > 20000:
-                    self.logger.info(f"Truncating content, original length: ({len(text)} characters)")
-                    text = text[:20000] + "... [content truncated]"
+                    original_len = len(text)
+                    max_len = 20000
+                    # Prepend informative warning (highly recommended for LLMs)
+                    text = (
+                        f"[CONTENT TRUNCATED] Total length: {original_len:,} characters. "
+                        f"Only first {max_len:,} characters included.\n"
+                        f"[WARNING: Original content was too long; do not assume this is the full document.]\n\n"
+                        + text[:max_len]
+                    )
+                    self.logger.info(f"Content truncated: {original_len:,} → {max_len:,} chars")
 
                 self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
                 return text
