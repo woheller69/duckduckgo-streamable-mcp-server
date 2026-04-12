@@ -293,6 +293,14 @@ async def fetch_content(
         ctx: MCP context for logging
         page: Page number for pagination (default: 1). Subsequent pages are read from cache.
         chunk_size: Size of each page in characters (default: 20000)
+
+    Returns:
+        Cleaned and formatted text content from the webpage formatted as markdown.
+
+    Note:
+        This tool uses HTTP requests to fetch page content (using curl_cffi),
+        so it does not execute JavaScript. Dynamic content loaded via JavaScript
+        may not be visible in the results.
     """
     return await fetcher.fetch_and_parse(url, ctx, page, chunk_size)
 

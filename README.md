@@ -57,6 +57,8 @@ Fetches and parses content from a webpage and formats it as markdown.
 **Returns:**
 Cleaned and formatted text content from the webpage formatted as markdown.
 
+**Note:** This tool uses HTTP requests to fetch page content, so it does **not** execute JavaScript. Dynamic content loaded via JavaScript may not be visible in the results.
+
 ## Features in Detail
 
 ### Rate Limiting
