@@ -146,6 +146,8 @@ class WebContentFetcher:
     def __init__(self):
         self.rate_limiter = RateLimiter(requests_per_minute=20)
         self.logger = logging.getLogger("duckduckgo_mcp.fetcher")
+        # Cache for fetched content: {url: full_text}
+        self.content_cache: dict[str, str] = {}
 
     def find_content(self, soup, url=None):
         # Parse URL parts for domain/path-based logic
@@ -184,51 +186,71 @@ class WebContentFetcher:
         # As a fallback, return the body or None
         return soup.find('body') or None
             
-    async def fetch_and_parse(self, url: str, ctx: Context) -> str:
+    async def fetch_and_parse(
+        self, url: str, ctx: Context, page: int = 1, chunk_size: int = 20000
+    ) -> str:
+        """
+        Fetch and parse content from a webpage URL with pagination support.
+
+        Args:
+            url: The webpage URL to fetch content from
+            ctx: MCP context for logging
+            page: Page number for pagination (default: 1)
+            chunk_size: Size of each chunk in characters (default: 20000)
+        """
         try:
             await self.rate_limiter.acquire()
             self.logger.info(f"Fetching content from: {url}")
-                
-            response = curl_requests.get(
-                url,
-                impersonate="chrome120",  # or "firefox110", "safari15_3", etc.
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                timeout=30
-            )
 
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            # Find content using heuristics
-            content_div = self.find_content(soup, url)
-        
-            if content_div:
-                # Converting to Markdown
-                text = md(str(content_div), heading_style="ATX")
-
-                if len(text) > 20000:
-                    original_len = len(text)
-                    max_len = 20000
-                    # Prepend informative warning (highly recommended for LLMs)
-                    text = (
-                        f"[CONTENT TRUNCATED] Total length: {original_len:,} characters. "
-                        f"Only first {max_len:,} characters included.\n"
-                        f"[WARNING: Original content was too long; do not assume this is the full document.]\n\n"
-                        + text[:max_len]
-                    )
-                    self.logger.info(f"Content truncated: {original_len:,} → {max_len:,} chars")
-
-                self.logger.info(f"Successfully fetched and parsed content ({len(text)} characters)")
-                return text
+            # Check cache first
+            if url in self.content_cache:
+                full_text = self.content_cache[url]
             else:
-                return "Content not found."
+                response = curl_requests.get(
+                    url,
+                    impersonate="chrome120",  # or "firefox110", "safari15_3", etc.
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                    timeout=30
+                )
 
+                soup = BeautifulSoup(response.text, "html.parser")
 
-        except httpx.TimeoutException:
-            self.logger.error(f"Request timed out for URL: {url}")
-            return "Error: The request timed out while trying to fetch the webpage."
-        except httpx.HTTPError as e:
-            self.logger.error(f"HTTP error occurred while fetching {url}: {str(e)}")
-            return f"Error: Could not access the webpage ({str(e)})"
+                # Find content using heuristics
+                content_div = self.find_content(soup, url)
+
+                if content_div:
+                    # Converting to Markdown
+                    full_text = md(str(content_div), heading_style="ATX")
+                    self.content_cache[url] = full_text
+                else:
+                    return "Content not found."
+
+            total_chars = len(full_text)
+            pages_total = (total_chars + chunk_size - 1) // chunk_size
+            # Calculate range for pagination
+            start_idx = (page - 1) * chunk_size
+            end_idx = min(start_idx + chunk_size, total_chars)
+
+            page_text = full_text[start_idx:end_idx]
+
+            # Add header info
+            if pages_total > 0:
+                # Check if page is out of range
+                if page > pages_total:
+                    return (
+                        f"[CONTENT PAGINATION: Page {page} of {pages_total}] "
+                        f"out of range (total characters: {total_chars})"
+                    )
+                else:
+                    page_info = (
+                        f"[CONTENT PAGINATION: Page {page} of {pages_total}] "
+                        f"(characters {start_idx+1}-{end_idx} of {total_chars})\n\n"
+                    )
+            else:
+                page_info = ""
+
+            return page_info + page_text
+
         except Exception as e:
             self.logger.error(f"Error fetching content from {url}: {str(e)}", exc_info=True)
             return f"Error: An unexpected error occurred while fetching the webpage ({str(e)})"
@@ -260,15 +282,19 @@ async def search(query: str, ctx: Context, max_results: int = 10) -> str:
 
 
 @mcp.tool()
-async def fetch_content(url: str, ctx: Context) -> str:
+async def fetch_content(
+    url: str, ctx: Context, page: int = 1, chunk_size: int = 20000
+) -> str:
     """
-    Fetch and parse content from a webpage URL.
+    Fetch and parse content from a webpage URL with pagination support.
 
     Args:
         url: The webpage URL to fetch content from
         ctx: MCP context for logging
+        page: Page number for pagination (default: 1). Subsequent pages are read from cache.
+        chunk_size: Size of each page in characters (default: 20000)
     """
-    return await fetcher.fetch_and_parse(url, ctx)
+    return await fetcher.fetch_and_parse(url, ctx, page, chunk_size)
 
 # Create ASGI app (NOT using mcp.run())
 app = mcp.http_app(path="/mcp")
